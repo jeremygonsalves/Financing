@@ -9,29 +9,17 @@ def load_transactions(file_path):
     transactions = transactions.drop(columns=['Ignore'])
     return transactions
 
-# Modify this function to handle missing values and load training data
 def load_training_data(file_path):
-    # Load the Excel file without headers
     training_data = pd.read_excel(file_path, header=None)
-    
-    # Select only the relevant columns (assuming first is 'Description' and second is 'Category')
     training_data = training_data.iloc[:, [1, 4]]
-    
-    # Manually assign column names based on the expected format
     training_data.columns = ['Description', 'Category']
-    
-    # Fill missing values in 'Description' with an empty string
     training_data['Description'].fillna("", inplace=True)
-    
-    # Drop rows where 'Category' is missing, as it is necessary for training
     training_data.dropna(subset=['Category'], inplace=True)
-    
     descriptions = training_data['Description']
     labels = training_data['Category']
     return descriptions, labels
 
 def categorize_transactions(transactions, classifier):
-    # Use the trained classifier to predict the category for each transaction
     transactions['Category'] = transactions['Description'].apply(lambda desc: classify_description(classifier, desc))
     return transactions
 
