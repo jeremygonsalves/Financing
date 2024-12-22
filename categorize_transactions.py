@@ -1,17 +1,37 @@
 import pandas as pd
 import sys
 import time
-from Models import train_classifier, classify_description, train_random_forest_classifier, train_neural_network_classifier
+from Models import classify_description, train_random_forest_classifier
 from openpyxl import load_workbook
+from datetime import datetime
 
 def load_transactions(file_path):
     transactions = pd.read_csv(file_path, header=None)
-    if len(transactions.columns) == 5:
+    
+    if 'wealthsimple' in file_path.lower():
+        if len(transactions.columns) > 1:
+            transactions = transactions.drop(columns=[1])
+        
+        transactions.insert(len(transactions.columns) - 1, 'Debit', 0)
+        transactions.columns = ['Date', 'Description', 'Charge', 'Debit', 'amount']
+        transactions = transactions.drop(columns=['amount'])
+        transactions['Charge'] = transactions['Charge'].str.replace('$', '', regex=False)
+        transactions['Charge'] = pd.to_numeric(transactions['Charge'], errors='coerce')   
+        transactions['Debit'] = transactions['Charge'].apply(lambda x: x if x > 0 else 0)  # Positive values to 'Debit'
+        transactions['Charge'] = transactions['Charge'].apply(lambda x: abs(x) if x < 0 else 0)  # Negative values to 'Charge'
+    
+    elif len(transactions.columns) == 5:
         transactions.columns = ['Date', 'Description', 'Charge', 'Debit', 'Ignore']
-        transactions = transactions.drop(columns=['Ignore'])
+        transactions = transactions.drop(columns=['Ignore'], errors='ignore')
     else:
         transactions.columns = ['Date', 'Description', 'Charge', 'Debit']
+    
+    if 'Date' in transactions.columns:
+        transactions['Date'] = pd.to_datetime(transactions['Date'], errors='coerce')
+        transactions['Date'] = transactions['Date'].dt.strftime("%Y-%m-%d")
+    
     return transactions
+
 
 def load_training_data(file_path):
     training_data = pd.read_excel(file_path, header=None, skiprows=1)
@@ -22,7 +42,6 @@ def load_training_data(file_path):
     descriptions = training_data['Description']
     labels = training_data['Category']
     return descriptions, labels
-#this function loads the training data from an excel file and returns the descriptions and labels
 
 def categorize_transactions(transactions, classifier):
     transactions['Category'] = transactions['Description'].apply(lambda desc: classify_description(classifier, desc))
@@ -43,8 +62,6 @@ if __name__ == "__main__":
     print("Training classifier...")
     classifier = train_random_forest_classifier(training_data, labels)  # Train a classifier using your data
     
-    # Training and test accuracy will already be printed from `train_random_forest_classifier`.
-    
     print(f"Processing file: {file_path}")
     transactions = load_transactions(file_path)
     categorized_transactions = categorize_transactions(transactions, classifier)
@@ -53,25 +70,11 @@ if __name__ == "__main__":
     print(f"Time taken: {end_time - start_time} seconds")
     print("All done!")
     
-    output_excel_path = 'Budget Planner.xlsx'
-    sheet_name = 'Transaction Data 2024'
+    output_excel_path = file_path.replace('.csv', '_categorized.xlsx')
 
-    print(f"Appending categorized transactions to: {output_excel_path}, Sheet: {sheet_name}")
+    print(f"Saving categorized transactions to: {output_excel_path}")
 
-    # Load the existing workbook
-    workbook = load_workbook(output_excel_path)
-    if sheet_name not in workbook.sheetnames:
-        print(f"Sheet {sheet_name} does not exist in {output_excel_path}.")
-        sys.exit(1)
+    # Save the categorized transactions to a new Excel file
+    categorized_transactions.to_excel(output_excel_path, index=False, sheet_name='Categorized Transactions')
 
-    # Load the existing sheet
-    sheet = workbook['Transaction Data 2024']
-
-    # Append the categorized transactions to the sheet
-    for row in categorized_transactions.itertuples(index=False, name=None):
-        sheet.append(row)
-
-    # Save the workbook
-    workbook.save(output_excel_path)
-
-    print(f"Categorized transactions appended to: {output_excel_path}, Sheet: {sheet_name}")
+    print(f"Categorized transactions saved to: {output_excel_path}")
